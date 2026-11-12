@@ -276,6 +276,7 @@ function pickAt(p,plan,pos){
 let drumBus,pumpBus,lpF,hpF;const curves=[];
 function ensureCtx(){
   if(ctx)return;
+  setSession('playback');
   ctx=new(window.AudioContext||window.webkitAudioContext)();
   const comp=ctx.createDynamicsCompressor();comp.threshold.value=-10;comp.ratio.value=4;comp.attack.value=.005;
   master=ctx.createGain();master.gain.value=.8;
@@ -407,18 +408,25 @@ function addUserSounds(l,arr){
 $('pickFile').onclick=()=>$('file').click();
 $('clearUser').onclick=()=>{cur().user=[];edit(e=>e.picks=[]);$('userHint').textContent=''};
 let pressing=false,micStream=null,recNode=null,recChunks=null,recSrc=null;
+let micOK=false;
+const setSession=t=>{try{if(navigator.audioSession)navigator.audioSession.type=t}catch(_){}};
 async function getMic(){
   if(micStream)return micStream;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nomic');
+  setSession('play-and-record');
   micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
   return micStream;
+}
+function releaseMic(){
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}
+  setSession('playback');
 }
 async function recStart(ev){
   ev.preventDefault();pressing=true;
   try{
     ensureCtx();await ctx.resume();
-    const first=!micStream;const st=await getMic();
-    if(first){$('userHint').textContent='マイクの準備ができました。もう一度押している間、録音します。';return}
+    const first=!micOK;const st=await getMic();
+    if(first){micOK=true;releaseMic();$('userHint').textContent='マイクを許可しました。もう一度押している間、録音します。';return}
     recSrc=ctx.createMediaStreamSource(st);recNode=ctx.createScriptProcessor(2048,1,1);recChunks=[];
     const mute=ctx.createGain();mute.gain.value=0;
     recNode.onaudioprocess=e=>{if(recChunks)recChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))};
@@ -426,6 +434,7 @@ async function recStart(ev){
     $('rec').classList.add('on');$('rec').textContent='● 録音中… 指を離すと追加';
     if(!pressing)setTimeout(recStop,300);
   }catch(err){
+    releaseMic();
     $('userHint').innerHTML='この画面(Claudeの中)ではマイクが使えません。同じページをSafariで単体のページとして開くと、ここで直接録音できます。今は「ファイルから追加」を使ってください。';
   }
 }
@@ -434,6 +443,7 @@ function recStop(ev){
   if(!recChunks)return;ev&&ev.preventDefault();
   const chunks=recChunks;recChunks=null;
   try{recSrc.disconnect();recNode.disconnect()}catch(_){}
+  releaseMic();
   $('rec').classList.remove('on');$('rec').textContent='● 押している間だけ録音';
   const n=chunks.reduce((a,c)=>a+c.length,0);if(n<ctx.sampleRate*.05)return;
   const buf=ctx.createBuffer(1,n,ctx.sampleRate),d=buf.getChannelData(0);let o=0;chunks.forEach(c=>{d.set(c,o);o+=c.length});
