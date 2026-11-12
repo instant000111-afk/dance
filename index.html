@@ -427,10 +427,16 @@ async function recStart(ev){
     ensureCtx();await ctx.resume();
     const first=!micOK;const st=await getMic();
     if(first){micOK=true;releaseMic();$('userHint').textContent='マイクを許可しました。もう一度押している間、録音します。';return}
-    recSrc=ctx.createMediaStreamSource(st);recNode=ctx.createScriptProcessor(2048,1,1);recChunks=[];
-    const mute=ctx.createGain();mute.gain.value=0;
-    recNode.onaudioprocess=e=>{if(recChunks)recChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))};
-    recSrc.connect(recNode).connect(mute).connect(ctx.destination);
+    if(window.MediaRecorder){
+      recMR=new MediaRecorder(st);recChunks=[];
+      recMR.ondataavailable=e=>{if(e.data&&e.data.size)recBlobs.push(e.data)};
+      recBlobs=[];recMR.start();
+    }else{
+      recSrc=ctx.createMediaStreamSource(st);recNode=ctx.createScriptProcessor(8192,1,1);recChunks=[];
+      const mute=ctx.createGain();mute.gain.value=0;
+      recNode.onaudioprocess=e=>{if(recChunks)recChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))};
+      recSrc.connect(recNode).connect(mute).connect(ctx.destination);
+    }
     $('rec').classList.add('on');$('rec').textContent='● 録音中… 指を離すと追加';
     if(!pressing)setTimeout(recStop,300);
   }catch(err){
@@ -438,24 +444,45 @@ async function recStart(ev){
     $('userHint').innerHTML='この画面(Claudeの中)ではマイクが使えません。同じページをSafariで単体のページとして開くと、ここで直接録音できます。今は「ファイルから追加」を使ってください。';
   }
 }
+let recMR=null,recBlobs=[];
 function recStop(ev){
   if(ev&&ev.type)pressing=false;
-  if(!recChunks)return;ev&&ev.preventDefault();
+  if(!recChunks)return;ev&&ev.preventDefault&&ev.preventDefault();
   const chunks=recChunks;recChunks=null;
+  $('rec').classList.remove('on');$('rec').textContent='● 押している間だけ録音';
+  if(recMR){
+    const mr=recMR;recMR=null;
+    mr.onstop=async()=>{
+      releaseMic();
+      try{
+        const blob=new Blob(recBlobs,{type:mr.mimeType||'audio/mp4'});
+        const ab=await blob.arrayBuffer();
+        const buf=await new Promise((res,rej)=>ctx.decodeAudioData(ab,res,rej));
+        finishRecording(buf);
+      }catch(_){$('userHint').textContent='録音データを読み込めませんでした'}
+    };
+    setTimeout(()=>{try{mr.stop()}catch(_){releaseMic()}},120);
+    return;
+  }
   try{recSrc.disconnect();recNode.disconnect()}catch(_){}
   releaseMic();
-  $('rec').classList.remove('on');$('rec').textContent='● 押している間だけ録音';
   const n=chunks.reduce((a,c)=>a+c.length,0);if(n<ctx.sampleRate*.05)return;
   const buf=ctx.createBuffer(1,n,ctx.sampleRate),d=buf.getChannelData(0);let o=0;chunks.forEach(c=>{d.set(c,o);o+=c.length});
+  finishRecording(buf);
+}
+function finishRecording(src){
+  const sr=src.sampleRate,n=src.length;if(n<sr*.05)return;
+  const buf=ctx.createBuffer(1,n,sr),d=buf.getChannelData(0);
+  for(let ch=0;ch<src.numberOfChannels;ch++){const c=src.getChannelData(ch);for(let i=0;i<n;i++)d[i]+=c[i]/src.numberOfChannels}
   let mx=0;for(let i=0;i<n;i++)mx=Math.max(mx,Math.abs(d[i]));
   if(mx>0){const k=.9/mx;for(let i=0;i<n;i++)d[i]*=k}
   const th=.06;let a=0,b=n-1;while(a<n&&Math.abs(d[a])<th)a++;while(b>a&&Math.abs(d[b])<th)b--;
-  a=Math.max(0,a-Math.floor(ctx.sampleRate*.01));b=Math.min(n-1,b+Math.floor(ctx.sampleRate*.05));
+  a=Math.max(0,a-Math.floor(sr*.01));b=Math.min(n-1,b+Math.floor(sr*.05));
   if(b<=a){$('userHint').textContent='音が小さすぎて録れませんでした';return}
   const l=cur(),num=(l.user||[]).length+1;
-  addUserSounds(l,[{buf,off:a/ctx.sampleRate,len:(b-a)/ctx.sampleRate,rec:true,n:'🎙'+num}]);
-  $('userHint').textContent=`録音を${l.user.length}番に追加しました(${((b-a)/ctx.sampleRate).toFixed(2)}秒)`;
-  playSound(l.user[l.user.length-1],l.edit,ctx.currentTime+.02,'drums');
+  addUserSounds(l,[{buf,off:a/sr,len:(b-a)/sr,rec:true,n:'🎙'+num}]);
+  $('userHint').textContent=`録音を${l.user.length}番に追加しました(${((b-a)/sr).toFixed(2)}秒)`;
+  playSound(l.user[l.user.length-1],l.edit,ctx.currentTime+.05,'drums');
 }
 $('rec').addEventListener('pointerdown',recStart);
 ['pointerup','pointercancel','pointerleave'].forEach(t=>$('rec').addEventListener(t,recStop));
