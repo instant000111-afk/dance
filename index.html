@@ -14,7 +14,9 @@
   button:disabled{opacity:.35}
   .top{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 8px}
   .row{display:flex;gap:8px;align-items:center}
-  #play{min-width:84px;font-weight:700}
+  #play{min-width:72px;font-weight:700;padding:9px 8px}
+  .vb{padding:9px 8px}
+  .vb.on{background:#ececee;color:#111}
   .meter{flex:1;display:grid;grid-template-columns:repeat(16,1fr);gap:2px}
   .meter div{height:22px;border-radius:3px;background:#24272c}
   .meter div.bar{background:#30343b}
@@ -68,6 +70,14 @@
   #file{display:none}
   #rec{flex:1;padding:16px;font-size:16px;font-weight:800;background:#3a1418;border-color:#7a2630;color:#ff8a95;user-select:none;-webkit-user-select:none;touch-action:none}
   #rec.on{background:#ff3b4e;color:#fff;animation:blink .4s infinite alternate}
+  .srow,.crow{display:flex;gap:6px;align-items:center;margin-top:6px}
+  .srow b{flex:1;font-size:14px}
+  .srow button,.crow button,.crow select{padding:7px 9px;font-size:13px}
+  .crow{position:relative;background:#1f2125;border-radius:10px;padding:6px;overflow:hidden}
+  .crow .no{width:1.6em;color:var(--sub);font-size:12px;text-align:center}
+  .crow select.sc{flex:1}
+  .crow .bar{position:absolute;left:0;bottom:0;height:3px;background:#f2c14e;width:0}
+  .crow.now{outline:2px solid #f2c14e}
   .chk{display:flex;align-items:center;gap:8px;font-size:14px}
 </style>
 </head>
@@ -77,7 +87,7 @@
     <div class="row">
       <button id="play">▶ 再生</button>
       <div class="meter" id="meter"></div>
-      <button id="gear" aria-label="全体設定">⚙</button>
+      <button id="recTab" class="vb" aria-label="録音">🎙</button><button id="flowTab" class="vb" aria-label="流れ">🎬</button><button id="gear" class="vb" aria-label="全体設定">⚙</button>
     </div>
     <div class="tabs" id="tabs"></div>
     <div class="subtabs" id="subtabs"></div>
@@ -96,11 +106,7 @@
       <div class="seg" id="order" style="margin-top:10px">
         <button data-o="seq">選んだ順に鳴らす</button><button data-o="rand">バラバラに鳴らす</button><button id="shuf" style="flex:.4">🎲</button>
       </div>
-      <div id="userBox" class="hide" style="margin-top:10px">
-        <div class="row"><button id="rec">● 押している間だけ録音</button></div>
-        <div class="row" style="margin-top:6px"><button id="pickFile" style="flex:1">📁 ファイルから追加</button><button id="clearUser">全部消す</button></div>
-        <div class="hint" id="userHint"></div>
-      </div>
+      <div id="userBox" class="hide hint">🎙の録音画面で録った音・読み込んだ音がここに並びます。<u id="goRec">録音画面を開く</u></div>
     </div>
 
     <div class="panel">
@@ -126,9 +132,44 @@
     </div>
   </div>
 
+  <div id="recView" class="hide">
+    <div class="panel">
+      <div class="sec"><b>🎙 録音</b><span>録った音は全レイヤーの「自分の音」で使えます</span></div>
+      <div class="row"><button id="rec">● 押している間だけ録音</button></div>
+      <div class="row" style="margin-top:6px"><button id="pickFile" style="flex:1">📁 ファイルから追加</button></div>
+      <div class="hint" id="userHint"></div>
+    </div>
+    <div class="panel">
+      <div class="sec"><b>録った音</b><span id="clipCount"></span></div>
+      <div class="chips" id="clipList"></div>
+    </div>
+    <div class="panel" id="editor">
+      <div class="sec"><b id="clipName">編集</b><span>白い端をドラッグして使う部分を決める</span></div>
+      <canvas id="clipWave" height="140" style="touch-action:none"></canvas>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap">
+        <button id="cPlay" style="flex:1">▶ 試聴</button><button id="cRev" style="flex:1">⇆ 反転</button><button id="cSplit" style="flex:1">✂ 無音で分割</button><button id="cDel">🗑</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flowView" class="hide">
+    <div class="panel">
+      <div class="sec"><b>🎬 シーン</b><span>今鳴っている16レイヤーを丸ごと保存</span></div>
+      <button id="sceneAdd" style="width:100%;background:#ececee;color:#111;font-weight:700">＋ 今の音をシーンとして保存</button>
+      <div id="sceneList" style="margin-top:8px"></div>
+    </div>
+    <div class="panel">
+      <div class="sec"><b>流れ(シーンの再生順)</b><label class="chk" style="font-size:12px"><input type="checkbox" id="chainLoop" checked> 繰り返す</label></div>
+      <div id="chainList"></div>
+      <button id="stepAdd" style="width:100%;margin-top:8px">＋ ステップを追加</button>
+      <button id="chainPlay" style="width:100%;margin-top:8px;background:#f2c14e;color:#111;border:none;font-weight:800;padding:13px">▶ 流れを再生</button>
+      <div class="hint">各ステップは指定した長さだけ鳴り、ぴったり次のシーンへ切り替わります。シーンが変わるたびに、各ループは頭から鳴り直します。</div>
+    </div>
+  </div>
+
   <div id="globalView" class="hide">
     <div class="panel">
-      <div class="sec"><b>全体設定</b><button id="back">← 戻る</button></div>
+      <div class="sec"><b>全体設定</b></div>
       <div class="ctl">
         <span>テンポ</span><input type="range" id="bpm" min="80" max="170" value="120"><span class="v" id="bpmV">120</span>
         <span>ポンプ</span><input type="range" id="pump" min="0" max="100" value="55"><span class="v" id="pumpV">55</span>
@@ -163,7 +204,7 @@ const MATS=[['drums','ドラム'],['bass','ベース'],['chords','ディスコ']
 const LENS=[1,2,4,8,16];
 const BEAT=60/120;
 let ctx=null, master=null;
-const LIB={drums:[],bass:[],chords:[],fx:[]}; // each: {n,a,buf,off,len}
+const LIB={drums:[],bass:[],chords:[],fx:[],user:[]}; // each: {n,a,buf,off,len}
 let bpm=120, pumpAmt=.55, quant='1', live=false, playing=false, step=0, nextTime=0, curBeat=-1, sel=0;
 const vis=[];
 
@@ -264,7 +305,7 @@ function makePlan(p){
   for(let h=0;h<Math.max(1,p.L*p.k);h++)rnd.push(rng());
   return{pat,prefix,rnd};
 }
-function soundsFor(l,p){return p.mat==='user'?(l.user||[]):LIB[p.mat]}
+function soundsFor(l,p){return LIB[p.mat]||[]}
 function pickAt(p,plan,pos){
   const n=p.picks.length;if(!n)return -1;
   const bar=Math.floor(pos/16),j=pos%16;if(!plan.pat[j])return -1;
@@ -312,21 +353,36 @@ function setMasterFilter(){
   lpF.Q.setTargetAtTime(v<0?.7+a*6:.7,t,.03);hpF.Q.setTargetAtTime(v>0?.7+a*6:.7,t,.03);
 }
 $('mfilt').oninput=setMasterFilter;
+let origin=0;
+const scenes=[];let steps=[];
+const chain={on:false,loop:true,idx:0,next:-1,end:-1,cur:-1,curStart:0,curLen:16};
 function boundary(s,l){
-  if(quant==='loop')return l.active.on?s%(l.active.L*16)===0:s%16===0;
-  return s%(parseInt(quant)*16)===0;
+  const r=s-origin;
+  if(quant==='loop')return l.active.on?r%(l.active.L*16)===0:r%16===0;
+  return r%(parseInt(quant)*16)===0;
 }
+function applyScene(sc){layers.forEach((l,i)=>{if(!sc.layers[i])return;l.active={...defaultParams(i),...clone(sc.layers[i])};l.edit=clone(l.active);l.plan=makePlan(l.active);l.queued=false})}
 function scheduleStep(s,time){
   const ev={time,s,pos:[],hits:[],applied:false};
+  if(chain.on&&s===chain.end){chain.on=false;ev.chainEnd=true}
+  if(chain.on&&s===chain.next){
+    const st=steps[chain.idx];
+    if(st&&scenes[st.scene]){
+      applyScene(scenes[st.scene]);origin=s;ev.applied=true;
+      chain.cur=chain.idx;chain.curStart=s;chain.curLen=Math.round(st.bars*16);chain.next=s+chain.curLen;
+      chain.idx++;if(chain.idx>=steps.length){if(chain.loop)chain.idx=0;else chain.end=chain.next}
+    }else chain.on=false;
+  }
+  ev.origin=origin;ev.chain=chain.on?{cur:chain.cur,start:chain.curStart,len:chain.curLen}:null;
   layers.forEach(l=>{
     if(l.queued&&boundary(s,l)){l.active=clone(l.edit);l.plan=makePlan(l.active);l.queued=false;ev.applied=true}
     const p=l.active;
     if(!p.on){ev.pos.push(-1);return}
-    const pos=s%(p.L*16);ev.pos.push(pos);
+    const pos=(s-origin)%(p.L*16);ev.pos.push(pos);
     const idx=pickAt(p,l.plan,pos);
     if(idx>=0){playSound(soundsFor(l,p)[idx],p,time,p.mat);ev.hits.push([l.i,idx])}
   });
-  if(s%4===0&&pumpAmt>0){const g=pumpBus.gain,b=60/bpm;g.cancelScheduledValues(time);g.setValueAtTime(1-pumpAmt*.85,time);g.linearRampToValueAtTime(1-pumpAmt*.85,time+.01);g.setTargetAtTime(1,time+.02,b*.18)}
+  if((s-origin)%4===0&&pumpAmt>0){const g=pumpBus.gain,b=60/bpm;g.cancelScheduledValues(time);g.setValueAtTime(1-pumpAmt*.85,time);g.linearRampToValueAtTime(1-pumpAmt*.85,time+.01);g.setTargetAtTime(1,time+.02,b*.18)}
   vis.push(ev);
 }
 setInterval(()=>{if(!playing||!ctx)return;while(nextTime<ctx.currentTime+.12){scheduleStep(step,nextTime);nextTime+=60/bpm/4;step++}},25);
@@ -366,7 +422,7 @@ $('file').onchange=async ev=>{
   try{
     ensureCtx();const ab=await f.arrayBuffer();
     const buf=await new Promise((res,rej)=>ctx.decodeAudioData(ab,res,rej));
-    addUserSounds(cur(),splitBySilence(buf).map(([o,len])=>({buf,off:o,len})));
+    addUserSounds(splitBySilence(buf).map(([o,len])=>({buf,off:o,len})));
     $('userHint').textContent=`「${f.name}」を区切って追加しました`;
   }catch(err){$('userHint').textContent='このファイルは音声として読み込めませんでした'}
   ev.target.value='';
@@ -383,9 +439,14 @@ function renderChips(){
 }
 $('commit').onclick=()=>{layers.forEach(l=>{if(!same(l.edit,l.active))l.queued=true});render()};
 $('cancel').onclick=()=>{layers.forEach(l=>{l.edit=clone(l.active);l.queued=false});render()};
-$('gear').onclick=()=>{$('layerView').classList.add('hide');$('globalView').classList.remove('hide');render()};
-$('back').onclick=()=>{showLayer();render()};
-function showLayer(){$('globalView').classList.add('hide');$('layerView').classList.remove('hide')}
+let view='layer';
+function showView(v){view=v;['layer','global','rec','flow'].forEach(n=>$(n+'View').classList.toggle('hide',n!==v));
+  $('gear').classList.toggle('on',v==='global');$('recTab').classList.toggle('on',v==='rec');$('flowTab').classList.toggle('on',v==='flow');render()}
+function showLayer(){showView('layer')}
+$('gear').onclick=()=>showView(view==='global'?'layer':'global');
+$('recTab').onclick=()=>showView(view==='rec'?'layer':'rec');
+$('flowTab').onclick=()=>showView(view==='flow'?'layer':'flow');
+$('goRec').onclick=()=>showView('rec');
 $('bpm').oninput=e=>{bpm=+e.target.value;$('bpmV').textContent=bpm};
 $('pump').oninput=e=>{pumpAmt=e.target.value/100;$('pumpV').textContent=e.target.value};
 document.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>{quant=b.dataset.q;render()});
@@ -393,21 +454,102 @@ $('live').onchange=e=>{live=e.target.checked;if(live)layers.forEach(l=>{l.active
 $('play').onclick=async()=>{
   try{
     ensureCtx();await ctx.resume();
-    if(playing){playing=false;vis.length=0;curBeat=-1;layers.forEach(l=>l.pos=-1);$('play').textContent='▶ 再生';return}
+    if(playing){stopAll();return}
     $('play').textContent='準備中…';await ready;
-    step=0;nextTime=ctx.currentTime+.1;playing=true;$('play').textContent='■ 停止';
+    step=0;origin=0;nextTime=ctx.currentTime+.1;playing=true;$('play').textContent='■ 停止';
   }catch(e){$('play').textContent='▶ 再生'}
 };
 
-function addUserSounds(l,arr){
-  l.user=(l.user||[]).concat(arr).slice(-16);
-  l.user.forEach((x,i)=>{x.n=x.n&&x.rec?x.n:String(i+1);x.a=String(i+1)});
-  const start=l.user.length-arr.length;
-  edit(e=>{e.mat='user';const add=arr.map((_,i)=>start+i).filter(i=>i>=0);e.picks=[...e.picks.filter(i=>i<l.user.length),...add].slice(-8)});
+let clipSel=-1,clipNo=0;
+function renumber(){LIB.user.forEach((x,i)=>x.a=String(i+1))}
+function stopAll(){playing=false;vis.length=0;curBeat=-1;chain.on=false;chainUI=null;layers.forEach(l=>l.pos=-1);$('play').textContent='▶ 再生';render()}
+let chainUI=null;
+async function startChain(){
+  if(!steps.length||!scenes.length)return;
+  chain.idx=0;chain.end=-1;chain.loop=$('chainLoop').checked;
+  if(!playing){ensureCtx();await ctx.resume();await ready;step=0;origin=0;chain.next=0;chain.on=true;nextTime=ctx.currentTime+.1;playing=true;$('play').textContent='■ 停止'}
+  else{const k=((step-origin)%16+16)%16;chain.next=step+(k===0?0:16-k);chain.on=true}
+  render();
+}
+/* ---------- シーンと流れ ---------- */
+const BARS=[0.25,0.5,1,2,4,8,16];
+$('sceneAdd').onclick=()=>{scenes.push({name:'シーン'+(scenes.length+1),layers:layers.map(l=>clone(l.active))});if(!steps.length)steps.push({scene:0,bars:4});render()};
+$('stepAdd').onclick=()=>{if(!scenes.length)return;const last=steps[steps.length-1];steps.push({scene:last?last.scene:scenes.length-1,bars:last?last.bars:4});render()};
+$('chainLoop').onchange=e=>{chain.loop=e.target.checked;if(chain.on&&chain.loop)chain.end=-1;saveLocal()};
+$('chainPlay').onclick=()=>{if(chain.on){chain.on=false;chainUI=null;render()}else startChain()};
+function renderFlow(){
+  if(view!=='flow')return;
+  $('sceneList').innerHTML=scenes.length?scenes.map((sc,i)=>`<div class="srow"><b>${sc.name}</b><button data-sl="${i}">呼び出す</button><button data-so="${i}">上書き</button><button data-sd="${i}">✕</button></div>`).join(''):'<div class="hint">まだシーンがありません。好きなループができたら保存してください。</div>';
+  $('sceneList').querySelectorAll('[data-sl]').forEach(b=>b.onclick=()=>{const sc=scenes[+b.dataset.sl];layers.forEach((l,i)=>{l.edit={...defaultParams(i),...clone(sc.layers[i])};if(!playing||live){l.active=clone(l.edit);l.plan=makePlan(l.active);l.queued=false}else l.queued=!same(l.edit,l.active)});render()});
+  $('sceneList').querySelectorAll('[data-so]').forEach(b=>b.onclick=()=>{scenes[+b.dataset.so].layers=layers.map(l=>clone(l.active));b.textContent='保存済';setTimeout(render,700)});
+  $('sceneList').querySelectorAll('[data-sd]').forEach(b=>b.onclick=()=>{const k=+b.dataset.sd;scenes.splice(k,1);steps=steps.filter(st=>st.scene!==k).map(st=>({...st,scene:st.scene>k?st.scene-1:st.scene}));render()});
+  const opts=i=>scenes.map((sc,k)=>`<option value="${k}"${k===i?' selected':''}>${sc.name}</option>`).join('');
+  const bopts=b=>BARS.map(x=>`<option value="${x}"${x===b?' selected':''}>${x}小節</option>`).join('');
+  $('chainList').innerHTML=steps.length?steps.map((st,i)=>`<div class="crow" data-row="${i}"><span class="no">${i+1}</span><select class="sc" data-ss="${i}">${opts(st.scene)}</select><select data-sb="${i}">${bopts(st.bars)}</select><button data-up="${i}">▲</button><button data-del="${i}">✕</button><span class="bar"></span></div>`).join(''):'<div class="hint">シーンを保存すると、ここに並べられます。</div>';
+  $('chainList').querySelectorAll('[data-ss]').forEach(x=>x.onchange=()=>{steps[+x.dataset.ss].scene=+x.value;saveLocal()});
+  $('chainList').querySelectorAll('[data-sb]').forEach(x=>x.onchange=()=>{steps[+x.dataset.sb].bars=+x.value;saveLocal()});
+  $('chainList').querySelectorAll('[data-up]').forEach(x=>x.onclick=()=>{const i=+x.dataset.up;if(i>0){[steps[i-1],steps[i]]=[steps[i],steps[i-1]];render()}});
+  $('chainList').querySelectorAll('[data-del]').forEach(x=>x.onclick=()=>{steps.splice(+x.dataset.del,1);render()});
+  $('chainPlay').textContent=chain.on?'■ 流れを止める(今のシーンは鳴り続けます)':'▶ 流れを再生';
+}
+function flowProgress(){
+  const rows=$('chainList').querySelectorAll('.crow');
+  rows.forEach((r,i)=>{const on=chainUI&&chainUI.cur===i;r.classList.toggle('now',!!on);
+    r.querySelector('.bar').style.width=on?Math.min(100,(curStep-chainUI.start)/chainUI.len*100)+'%':'0'});
+}
+/* ---------- 録音の編集 ---------- */
+function renderRec(){
+  if(view!=='rec')return;
+  $('clipCount').textContent=LIB.user.length?`${LIB.user.length}個`:'';
+  $('clipList').innerHTML=LIB.user.length?LIB.user.map((c,i)=>`<button class="chip${i===clipSel?' on':''}" data-ci="${i}"><span class="no">${i+1}</span>${c.n}</button>`).join(''):'<div class="hint" style="grid-column:1/-1">まだありません。上のボタンで録音してください。</div>';
+  $('clipList').querySelectorAll('[data-ci]').forEach(b=>b.onclick=()=>{clipSel=+b.dataset.ci;previewClip();render()});
+  $('editor').classList.toggle('hide',!LIB.user[clipSel]);
+  if(LIB.user[clipSel])$('clipName').textContent=`${clipSel+1}. ${LIB.user[clipSel].n}(${LIB.user[clipSel].len.toFixed(2)}秒)`;
+}
+async function previewClip(){const c=LIB.user[clipSel];if(!c)return;try{ensureCtx();await ctx.resume();playSound(c,{pitch:0,gate:100,vol:90},ctx.currentTime+.02,'drums')}catch(_){}}
+$('cPlay').onclick=previewClip;
+$('cRev').onclick=()=>{const c=LIB.user[clipSel];if(!c)return;
+  const src=c.buf,buf=ctx.createBuffer(src.numberOfChannels,src.length,src.sampleRate);
+  for(let ch=0;ch<src.numberOfChannels;ch++){const a=src.getChannelData(ch),b=buf.getChannelData(ch),n=a.length;for(let i=0;i<n;i++)b[i]=a[n-1-i]}
+  c.off=src.duration-(c.off+c.len);c.buf=buf;c.n=c.n.endsWith('↩')?c.n.slice(0,-1):c.n+'↩';previewClip();render()};
+$('cSplit').onclick=()=>{const c=LIB.user[clipSel];if(!c)return;
+  const sr=c.buf.sampleRate,s0=Math.floor(c.off*sr),n=Math.floor(c.len*sr),part=ctx.createBuffer(1,n,sr);
+  part.getChannelData(0).set(c.buf.getChannelData(0).subarray(s0,s0+n));
+  const segs=splitBySilence(part);if(segs.length<2||segs.length===16&&Math.abs(segs[0][1]-segs[1][1])<1e-6){$('userHint').textContent='無音のすき間が見つかりませんでした';return}
+  const parts=segs.map(([o,len],k)=>({buf:c.buf,off:c.off+o,len,n:c.n+'-'+(k+1)}));
+  LIB.user.splice(clipSel,1,...parts);renumber();render()};
+$('cDel').onclick=()=>{if(!LIB.user[clipSel])return;LIB.user.splice(clipSel,1);renumber();clipSel=Math.min(clipSel,LIB.user.length-1);render()};
+let dragH=null;
+function clipX(ev){const r=$('clipWave').getBoundingClientRect();return Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width))}
+$('clipWave').addEventListener('pointerdown',ev=>{const c=LIB.user[clipSel];if(!c)return;ev.preventDefault();
+  const x=clipX(ev)*c.buf.duration;dragH=Math.abs(x-c.off)<Math.abs(x-(c.off+c.len))?'s':'e';$('clipWave').setPointerCapture(ev.pointerId);moveH(ev)});
+$('clipWave').addEventListener('pointermove',ev=>{if(dragH)moveH(ev)});
+$('clipWave').addEventListener('pointerup',()=>{if(dragH){dragH=null;previewClip();render()}});
+function moveH(ev){const c=LIB.user[clipSel],d=c.buf.duration,x=clipX(ev)*d,end=c.off+c.len;
+  if(dragH==='e'&&x<c.off){dragH='s';c.len=.02}else if(dragH==='s'&&x>end){dragH='e';c.off=end-.02;c.len=.02}
+  const end2=c.off+c.len;if(dragH==='s'){c.off=Math.max(0,Math.min(x,end2-.02));c.len=end2-c.off;return}
+  if(dragH==='s'){const o=Math.min(x,end-.02);c.off=Math.max(0,o);c.len=end-c.off}else{c.len=Math.max(.02,Math.min(d,x)-c.off)}}
+function computePeaks(buf){
+  const d=buf.getChannelData(0),W=400,st=Math.max(1,Math.floor(d.length/W)),p=[];
+  for(let i=0;i<W;i++){let m=0;for(let j=i*st;j<(i+1)*st&&j<d.length;j+=3)m=Math.max(m,Math.abs(d[j]));p.push(m)}
+  const mx=Math.max(...p)||1;return p.map(v=>v/mx);
+}
+const clipPeaks=new WeakMap();
+function drawClip(){
+  const c=LIB.user[clipSel];if(!c)return;const [g,w,h]=fit($('clipWave'));g.clearRect(0,0,w,h);
+  let pk=clipPeaks.get(c.buf);if(!pk){pk=computePeaks(c.buf);clipPeaks.set(c.buf,pk)}
+  const d=c.buf.duration,x0=c.off/d*w,x1=(c.off+c.len)/d*w;
+  g.fillStyle='#24272c';g.fillRect(0,0,w,h);g.fillStyle='rgba(255,255,255,.06)';g.fillRect(x0,0,x1-x0,h);
+  pk.forEach((p,i)=>{const x=i/pk.length*w,ph=Math.max(1,p*h*.85);g.fillStyle=x>=x0&&x<=x1?'#ff6b8b':'#45484f';g.fillRect(x,h/2-ph/2,Math.max(1,w/pk.length-.3),ph)});
+  g.fillStyle='#fff';[x0,x1].forEach(x=>{g.fillRect(x-1.5,0,3,h);g.beginPath();g.arc(x,h/2,9,0,7);g.fill()});
+}
+function addUserSounds(arr){
+  arr.forEach(x=>{clipNo++;x.n=x.n||('音'+clipNo)});
+  LIB.user=LIB.user.concat(arr).slice(-32);renumber();
+  clipSel=LIB.user.length-1;render();
 }
 $('pickFile').onclick=()=>$('file').click();
-$('clearUser').onclick=()=>{cur().user=[];edit(e=>e.picks=[]);$('userHint').textContent=''};
-let pressing=false,micStream=null,recNode=null,recChunks=null,recSrc=null;
+let curStep=0,pressing=false,micStream=null,recNode=null,recChunks=null,recSrc=null;
 let micOK=false;
 const setSession=t=>{try{if(navigator.audioSession)navigator.audioSession.type=t}catch(_){}};
 async function getMic(){
@@ -479,10 +621,9 @@ function finishRecording(src){
   const th=.06;let a=0,b=n-1;while(a<n&&Math.abs(d[a])<th)a++;while(b>a&&Math.abs(d[b])<th)b--;
   a=Math.max(0,a-Math.floor(sr*.01));b=Math.min(n-1,b+Math.floor(sr*.05));
   if(b<=a){$('userHint').textContent='音が小さすぎて録れませんでした';return}
-  const l=cur(),num=(l.user||[]).length+1;
-  addUserSounds(l,[{buf,off:a/sr,len:(b-a)/sr,rec:true,n:'🎙'+num}]);
-  $('userHint').textContent=`録音を${l.user.length}番に追加しました(${((b-a)/sr).toFixed(2)}秒)`;
-  playSound(l.user[l.user.length-1],l.edit,ctx.currentTime+.05,'drums');
+  addUserSounds([{buf,off:a/sr,len:(b-a)/sr,n:'🎙'+(clipNo+1)}]);
+  $('userHint').textContent=`追加しました(${((b-a)/sr).toFixed(2)}秒)`;
+  playSound(LIB.user[clipSel],{pitch:0,gate:100,vol:90},ctx.currentTime+.05,'drums');
 }
 $('rec').addEventListener('pointerdown',recStart);
 ['pointerup','pointercancel','pointerleave'].forEach(t=>$('rec').addEventListener(t,recStop));
@@ -500,12 +641,15 @@ function splitBySilence(buf){
 }
 const encode=o=>btoa(unescape(encodeURIComponent(JSON.stringify(o))));
 const decode=t=>JSON.parse(decodeURIComponent(escape(atob(t.trim()))));
-function snapshot(){return{v:2,bpm,pump:Math.round(pumpAmt*100),quant,layers:layers.map(l=>l.edit)}}
+function snapshot(){return{v:3,bpm,pump:Math.round(pumpAmt*100),quant,layers:layers.map(l=>l.edit),scenes,steps,loop:$('chainLoop').checked}}
 function applySnapshot(o,instant){
   if(!o||!Array.isArray(o.layers))throw 0;
   if(o.bpm){bpm=o.bpm;$('bpm').value=bpm;$('bpmV').textContent=bpm}
   if(o.pump!=null){pumpAmt=o.pump/100;$('pump').value=o.pump;$('pumpV').textContent=o.pump}
   if(o.quant)quant=o.quant;
+  if(Array.isArray(o.scenes)){scenes.length=0;o.scenes.forEach(x=>scenes.push(x))}
+  if(Array.isArray(o.steps))steps=o.steps.filter(st=>scenes[st.scene]);
+  if(o.loop!=null)$('chainLoop').checked=o.loop;
   layers.forEach((l,i)=>{if(!o.layers[i])return;l.edit={...defaultParams(i),...o.layers[i]};
     if(instant||live||!playing){l.active=clone(l.edit);l.plan=makePlan(l.active);l.queued=false}else l.queued=false});
 }
@@ -521,7 +665,7 @@ $('importBtn').onclick=()=>{
 };
 const matName=k=>(MATS.find(x=>x[0]===k)||[,''])[1];
 function render(){
-  const l=cur(),e=l.edit,gv=!$('globalView').classList.contains('hide');
+  const l=cur(),e=l.edit,gv=view!=='layer';
   document.documentElement.style.setProperty('--c',l.color);
   layers.forEach(x=>{
     const dirty=!same(x.edit,x.active);
@@ -540,6 +684,7 @@ function render(){
     G.tab.querySelector('small').textContent=`${on}/4 ON`;
     G.tab.style.opacity=on?1:.5;
   });
+  renderRec();renderFlow();
   saveLocal();
   document.querySelectorAll('[data-p]').forEach(inp=>{inp.value=e[inp.dataset.p];document.querySelector(`[data-v="${inp.dataset.p}"]`).textContent=FMT[inp.dataset.p](e[inp.dataset.p])});
   document.querySelectorAll('[data-m]').forEach(b=>b.classList.toggle('on',b.dataset.m===e.mat));
@@ -584,7 +729,9 @@ function frame(){
       ev.pos.forEach((p,i)=>layers[i].pos=p);
       ev.hits.forEach(([li,idx])=>{layers[li].lvl=1;layers[li].hit=idx;layers[li].hitA=1});
       if(ev.applied)applied=true;
-      curBeat=Math.floor(ev.s/4)%16;
+      curBeat=Math.floor((ev.s-ev.origin)/4)%16;curStep=ev.s;
+      const wasChain=!!chainUI;chainUI=ev.chain;if(ev.chainEnd||wasChain!==!!chainUI)applied=true;
+      if(ev.chain&&ev.s===ev.chain.start)applied=true;
     }
     if(applied)render();
   }
@@ -594,7 +741,9 @@ function frame(){
   layers.forEach(l=>{l.tab.querySelector('.lv').style.opacity=l.lvl;l.lvl*=.85;l.hitA*=.8});
   const l=cur();
   $('chips').querySelectorAll('.chip').forEach(b=>b.classList.toggle('hit',+b.dataset.i===l.hit&&l.hitA>.3));
-  if(!$('layerView').classList.contains('hide'))drawGrid();
+  if(view==='layer')drawGrid();
+  if(view==='rec')drawClip();
+  if(view==='flow')flowProgress();
   requestAnimationFrame(frame);
 }
 try{const o=JSON.parse(localStorage.getItem('slicelooper-v2'));if(o)applySnapshot(o,true)}catch(_){}
