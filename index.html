@@ -64,6 +64,13 @@
   .steps button:nth-child(4n+1){background:#2a2e34}
   .steps button.on{background:var(--c)}
   .steps button.now{outline:2px solid #fff}
+  .roll{display:grid;grid-template-columns:2.2em repeat(16,1fr);gap:2px;margin-top:8px}
+  .roll span{font-size:9px;color:var(--sub);display:flex;align-items:center}
+  .roll button{padding:0;height:17px;border-radius:3px;background:#1d2024;border:none}
+  .roll button.c4{background:#262a2f}
+  .roll button.rt{background:#2c3138}
+  .roll button.on{background:var(--c)}
+  .roll button.now{box-shadow:inset 0 0 0 1px #fff}
   .seg{display:flex;gap:4px}.seg button{flex:1;padding:8px 0;font-size:13px}
   .seg button.on{background:#ececee;color:#111;font-weight:700}
 
@@ -96,6 +103,7 @@
   </div>
 
   <div id="mainView">
+    <div class="seg" id="genre" style="margin-bottom:8px"><button data-g="fh">フレンチハウス</button><button data-g="bh">ベースハウス</button></div>
     <div class="mixer" id="mixer"></div>
     <div class="hold">
       <button id="hBreak">ブレイク</button><button id="hRoll">ロール</button><button id="hStut">スタッター</button>
@@ -113,6 +121,12 @@
       <div id="dAlts" class="seg"></div>
       <div id="dPicks" class="chips" style="margin-top:8px"></div>
       <div id="dSteps" class="steps"></div>
+      <div id="dRoll" class="hide">
+        <div class="row" style="margin-top:8px"><div class="seg" id="rBar" style="flex:1"><button data-b="0">1小節目</button><button data-b="1">2小節目</button></div><div class="seg" id="rOct" style="flex:1"><button data-o="-12">低</button><button data-o="0">中</button><button data-o="12">高</button></div></div>
+        <div id="roll" class="roll"></div>
+        <div class="row" style="margin-top:6px"><button id="rCopy" style="flex:1">1小節目を2小節目にコピー</button><button id="rClear">全消し</button></div>
+        <div class="macro" style="margin-top:4px"><span>音の長さ</span><input type="range" id="dGate" min="15" max="200"><span class="v" id="dGateV"></span></div>
+      </div>
       <div class="macro" style="margin-top:6px"><span>音量</span><input type="range" id="dVol" min="0" max="100"><span class="v" id="dVolV"></span></div>
       <div class="hint" id="dHint"></div>
     </div>
@@ -158,6 +172,8 @@
     <div class="panel">
       <div class="sec"><b>全体設定</b></div>
       <div class="macro"><span>テンポ</span><input type="range" id="bpm" min="90" max="140" value="122"><span class="v" id="bpmV">122</span></div>
+      <div class="sec" style="margin-top:12px"><span>キー(ベースとコードの高さ)</span></div>
+      <select id="key" style="width:100%"></select>
       <div class="sec" style="margin-top:12px"><span>フェーダーを動かした内容が切り替わるタイミング</span></div>
       <div class="seg" id="quant"><button data-q="4">次の拍</button><button data-q="16">次の小節</button><button data-q="32">2小節</button></div>
       <div class="sec" style="margin-top:16px"><b>保存と読み込み</b></div>
@@ -172,7 +188,7 @@
 <script>
 const $=id=>document.getElementById(id);
 const clone=o=>JSON.parse(JSON.stringify(o));
-const LIB={drums:[],bass:[],chords:[],fx:[],user:[]};
+const LIB={drums:[],bass:[],chords:[],fx:[],bh:[],user:[]};
 let ctx=null;
 async function renderSound(dur,fn){
   const sr=44100,OC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
@@ -243,15 +259,37 @@ const DEFS={
     ['落下','DN',1,({O,N})=>{O(0,{f:140,fEnd:30,fTime:.8,v:.9,dec:.9});N(0,{type:'lowpass',f:2500,fEnd:200,v:.3,dec:.8})}],
   ],
 };
+/* ---- ベースハウス用の音 ---- */
+const sweepBass=({oc,out,D},o)=>{const d=D(o.drive||.8);[0,1].forEach(k=>{const x=oc.createOscillator();x.type=k?'square':'sawtooth';x.frequency.value=55*(k?1.004:1);const f=oc.createBiquadFilter();f.type=o.type||'lowpass';f.Q.value=o.q||8;o.env.forEach(([t,v],i)=>i?f.frequency.exponentialRampToValueAtTime(v,t):f.frequency.setValueAtTime(v,t));const g=oc.createGain();g.gain.setValueAtTime(.0001,0);g.gain.linearRampToValueAtTime(k?.25:.45,.006);g.gain.setValueAtTime(k?.25:.45,o.dur-.05);g.gain.linearRampToValueAtTime(0,o.dur);x.connect(f).connect(g).connect(d);x.start(0);x.stop(o.dur)});
+  const s=oc.createOscillator();s.frequency.value=55;const sg=oc.createGain();sg.gain.setValueAtTime(.0001,0);sg.gain.linearRampToValueAtTime(.7,.006);sg.gain.setValueAtTime(.7,o.dur-.05);sg.gain.linearRampToValueAtTime(0,o.dur);s.connect(sg).connect(out);s.start(0);s.stop(o.dur)};
+DEFS.bh=[
+  ['タイトキック','K',.35,({O,N,D})=>{const d=D(.35);O(0,{f:165,fEnd:44,fTime:.06,v:1,dec:.3,to:d});N(0,{type:'highpass',f:3000,v:.4,dec:.008})}],
+  ['テッククラップ','CP',.5,({N})=>{[0,.009,.018].forEach(d=>N(d,{f:1200,q:1.5,v:.55,dec:.025}));N(.028,{f:1100,q:.8,v:.45,dec:.38})}],
+  ['閉ハット','CH',.06,({N})=>N(0,{type:'highpass',f:10000,v:.45,dec:.025})],
+  ['開ハット','OH',.3,({N})=>N(0,{type:'highpass',f:8500,v:.4,dec:.18})],
+  ['リム','RM',.06,({O,N})=>{O(0,{type:'square',f:1700,v:.25,dec:.02,lp:5000});N(0,{f:4000,q:3,v:.3,dec:.02})}],
+  ['シェイカー','SH',.1,({N})=>N(0,{type:'highpass',f:7000,v:.3,dec:.05,q:.5})],
+  ['タム','TM',.3,({O})=>O(0,{f:120,fEnd:70,v:.8,dec:.25})],
+  ['ライド','RD',.6,({N,O})=>{N(0,{f:7000,q:2,v:.35,dec:.5});O(0,{type:'square',f:4800,v:.05,dec:.3,lp:9000})}],
+  ['うなり','UN',.45,s=>sweepBass(s,{dur:.45,env:[[0,180],[.07,2200],[.4,260]]})],
+  ['ワウ','WA',.45,s=>sweepBass(s,{dur:.45,type:'bandpass',q:7,env:[[0,300],[.22,2600],[.44,500]]})],
+  ['オルガン','OR',.3,({O})=>[1,2,3,4].forEach((m,i)=>O(0,{f:110*m,v:[.5,.3,.15,.1][i],dec:.26}))],
+  ['サブ','SB',.5,({O,D})=>{const d=D(.25);O(0,{f:55,v:.9,dec:.45,att:.005,to:d})}],
+  ['リース','RS',.5,({O,D})=>{const d=D(.5);[-22,0,22].forEach(det=>O(0,{type:'sawtooth',f:55,det,v:.3,dec:.45,att:.005,lp:900,q:2,to:d}));O(0,{f:55,v:.5,dec:.45})}],
+  ['ダークスタブ','ST',.3,({O})=>[220,261.6,329.6].forEach(f=>saws(O,0,f,{v:.06,dec:.2,lp:2600,lpEnd:400,q:3}))],
+  ['オルガンコード','OC',.3,({O})=>[220,261.6,329.6].forEach(f=>[1,2,3].forEach((m,i)=>O(0,{f:f*m,v:[.12,.07,.04][i],dec:.22})))],
+  ['ダークパッド','PD',1.6,({O})=>[220,261.6,329.6].forEach(f=>saws(O,0,f,{v:.035,dec:1.2,att:.3,lp:1200}))],
+];
+
 const ready=Promise.all(Object.entries(DEFS).flatMap(([g,list])=>list.map(async([n,a,dur,fn],i)=>{const buf=await renderSound(dur,fn);LIB[g][i]={n,a,buf,off:0,len:buf.duration}})));
 
 /* ================= パターン(ひな形) ================= */
 // 文字 → 音の対応。1文字=16分音符1つ
 function line(str,map){return [...str].map(ch=>map[ch]?[map[ch]]:null)}
 function notes(str,snd,extra={}){return str.trim().split(/\s+/).map(t=>t==='.'?null:[{snd,semi:+t,...extra}])}
-function chordsLine(str){return str.trim().split(/\s+/).map(t=>t==='.'?null:t.split('+').map(k=>({snd:'chords:'+k})))}
+function chordsLine(str,grp='chords'){return str.trim().split(/\s+/).map(t=>t==='.'?null:t.split('+').map(k=>({snd:grp+':'+k})))}
 const K='@kick',C='@clap';
-const TRACKS=[
+const TRACKS_FH=[
   {id:'kick',name:'キック',color:'#ff5d5d',bus:'drum',desc:'曲の土台。上げるほど跳ねる',
    alts:[['普通','drums:0'],['歪み','drums:1']],
    pats:[['OFF',''],['ハーフ','x.......x.......'],['四つ打ち','x...x...x...x...'],['四つ打ち+','x...x...x...x..x'],['跳ね','x...x..x..x.x...'],['ブレイクビーツ','x..x..x...xx..x.']].map(([n,s])=>[n,line(s.padEnd(16,'.'),{x:{snd:K}})])},
@@ -276,12 +314,34 @@ const TRACKS=[
    pats:[['OFF',''],['頭','x...............'],['コール','........x.......'],['2・4','....x.......x...'],['裏','..x...x...x...x.'],['刻み','x.xx..x.x.xx..x.'],['連打','xxxx....x.x.xxxx'],['自作','custom']].map(([n,s])=>[n,s==='custom'?'custom':line(s.padEnd(16,'.'),{x:{snd:'@pick'}})])},
 ];
 // パーカスのカウベルは専用の音がないのでリム+ピッチで代用
-TRACKS[3].pats.forEach(([,ev])=>ev.forEach(e=>e&&e.forEach(h=>{if(h.vol===0){h.snd='drums:11';h.vol=.45;h.semi=-5}})));
+TRACKS_FH[3].pats.forEach(([,ev])=>ev.forEach(e=>e&&e.forEach(h=>{if(h.vol===0){h.snd='drums:11';h.vol=.45;h.semi=-5}})));
 
+const lineBH=(s,m)=>line(s.padEnd(16,'.'),m);
+const TRACKS_BH=[
+  {id:'kick',name:'キック',color:'#ff5d5d',bus:'drum',desc:'硬くて短いキック',alts:[['タイト','bh:0'],['太い','drums:1']],
+   pats:[['OFF',''],['四つ打ち','x...x...x...x...'],['四つ打ち+','x...x...x...x..x'],['前のめり','x...x...x..xx...'],['ブレイク','x..x..x...x..x..']].map(([n,s])=>[n,lineBH(s,{x:{snd:K}})])},
+  {id:'clap',name:'クラップ',color:'#ffa24a',bus:'drum',desc:'2拍目と4拍目',alts:[['クラップ','bh:1'],['スネア','drums:3']],
+   pats:[['OFF',''],['2・4','....x.......x...'],['2・4+','....x.......x..g'],['ゴースト','....x..g....x.g.'],['ビルド','....x...x...xxxx']].map(([n,s])=>[n,lineBH(s,{x:{snd:C},g:{snd:C,vol:.35}})])},
+  {id:'hat',name:'ハット',color:'#ffe066',bus:'drum',desc:'テックハウスの刻み',
+   pats:[['OFF',''],['裏打ち','..o...o...o...o.'],['テック16','gcogg.ogg.oggcog'],['ガロップ','.co..co..co..coc'],['ライド','d.d.d.d.d.d.d.d.']].map(([n,s])=>[n,lineBH(s,{c:{snd:'bh:2',vol:.5},g:{snd:'bh:2',vol:.25},o:{snd:'bh:3',vol:.5},d:{snd:'bh:7',vol:.4}})])},
+  {id:'perc',name:'パーカス',color:'#7ee08a',bus:'drum',desc:'隙間を埋める飾り',
+   pats:[['OFF',''],['リム裏','...r.......r..r.'],['シェイカー','sSsSsSsSsSsSsSsS'],['トライバル','t..t..t.r.t..t.r'],['全部','r.st.rs.t.sr.tsr']].map(([n,s])=>[n,lineBH(s,{r:{snd:'bh:4',vol:.5},s:{snd:'bh:5',vol:.2},S:{snd:'bh:5',vol:.4},t:{snd:'bh:6',vol:.6}})])},
+  {id:'bass',name:'ベース',color:'#5cc8ff',bus:'music',desc:'音色を選び、自作で打ち込める',
+   alts:[['うなり','bh:8'],['ワウ','bh:9'],['オルガン','bh:10',-12],['サブ','bh:11'],['リース','bh:12']],
+   pats:[['OFF','.'],['ルート裏','. . 0 . . . 0 . . . 0 . . . 0 .'],['跳ね','. . 0 0 . . 0 . . . 0 0 . 0 . .'],['オクターブ','. . 0 12 . . 0 . . . 0 12 . 0 . 12'],
+     ['うねり','. . 0 . . 0 . 0 . . 0 . 3 . 0 . . . -2 . . -2 . -2 . . 0 . 3 . 5 .'],['自作','custom']].map(([n,s])=>[n,s==='custom'?'custom':s==='.'?[]:notes(s,'@bass')])},
+  {id:'chord',name:'スタブ',color:'#c58bff',bus:'music',send:.35,desc:'和音の短い「ジャッ」',
+   pats:[['OFF','.'],['パッド','15 . . . . . . . . . . . . . . . 15 . . . . . . . . . . . . . . .'],['裏スタブ','. . 13 . . . 13 . . . 13 . . . 13 .'],['オルガン','14 . . 14 . . 14 . . . 14 . . 14 . .'],
+     ['刻み','. 13 . 13 13 . 13 . . 13 . 13 13 . . 13']].map(([n,s])=>[n,s==='.'?[]:chordsLine(s,'bh')])},
+  TRACKS_FH[6],
+];
+const GENRES={fh:{name:'フレンチハウス',tracks:TRACKS_FH,bpm:122,init:[[0,2],[1,1],[2,1],[4,3],[5,1]]},bh:{name:'ベースハウス',tracks:TRACKS_BH,bpm:127,init:[[0,1],[1,1],[2,2],[4,4],[3,1]]}};
+let TRACKS=TRACKS_FH;
 const state={
-  tr:TRACKS.map(t=>({cur:0,want:0,mute:false,alt:0,vol:80,picks:[0],custom:Array(16).fill(false),hitA:0,lastStep:-1})),
-  pump:55,echo:25,drive:0,filt:0,bpm:122,quant:16
+  tr:TRACKS.map(t=>({cur:0,want:0,mute:false,alt:0,vol:80,picks:[0],custom:Array(16).fill(false),notes:Array(32).fill(null),gate:100,hitA:0,lastStep:-1})),
+  pump:55,echo:25,drive:0,filt:0,bpm:122,quant:16,genre:'fh',key:0
 };
+state.tr[4].notes=[0,null,null,0,null,null,12,null,null,null,0,null,3,null,0,null,null,null,-2,null,null,-2,null,-2,null,null,0,null,3,null,5,null];
 // 初期の曲:キック四つ打ち・クラップ・裏ハット・ディスコベース・ストリングス
 [[0,2],[1,1],[2,1],[4,3],[5,1]].forEach(([i,v])=>{state.tr[i].cur=state.tr[i].want=v});
 state.tr[6].custom=[...'x.......x..x....'].map(c=>c==='x');
@@ -345,7 +405,7 @@ const chain={on:false,loop:true,idx:0,next:-1,end:-1,cur:-1,curStart:0,curLen:16
 let chainUI=null;
 function trackEvents(ti,pos){
   const T=TRACKS[ti],S=state.tr[ti],pat=T.pats[S.cur][1];
-  if(pat==='custom')return S.custom[pos%16]?[{snd:'@pick'}]:null;
+  if(pat==='custom'){if(T.id==='bass'){const n=S.notes[pos%32];return n==null?null:[{snd:'@bass',semi:n}]}return S.custom[pos%16]?[{snd:'@pick'}]:null}
   if(!pat.length)return null;return pat[pos%pat.length];
 }
 function resolve(ti,h,count){
@@ -355,9 +415,10 @@ function resolve(ti,h,count){
   if(h.snd==='@pick'){const L=voiceList(),ps=S.picks.filter(i=>L[i]);if(!ps.length)return null;return L[ps[count%ps.length]]}
   return sound(h.snd);
 }
-function snapshotScene(){return{tr:state.tr.map(t=>({want:t.want,mute:t.mute,alt:t.alt,vol:t.vol,picks:[...t.picks],custom:[...t.custom]})),pump:state.pump,echo:state.echo,drive:state.drive}}
+function snapshotScene(){return{genre:state.genre,key:state.key,tr:state.tr.map(t=>({want:t.want,mute:t.mute,alt:t.alt,vol:t.vol,picks:[...t.picks],custom:[...t.custom],notes:[...t.notes],gate:t.gate})),pump:state.pump,echo:state.echo,drive:state.drive}}
 function applyScene(sc,instant){
-  sc.tr.forEach((x,i)=>{const t=state.tr[i];if(!t)return;Object.assign(t,{want:x.want,alt:x.alt,vol:x.vol,picks:[...x.picks],custom:[...x.custom]});t.wantMute=x.mute;if(instant){t.cur=t.want;t.mute=x.mute}});
+  if(sc.genre&&sc.genre!==state.genre)setGenre(sc.genre,true);if(sc.key!=null)state.key=sc.key;
+  sc.tr.forEach((x,i)=>{const t=state.tr[i];if(!t)return;Object.assign(t,{want:x.want,alt:x.alt,vol:x.vol,picks:[...x.picks],custom:[...x.custom]});if(x.notes)t.notes=[...x.notes];if(x.gate)t.gate=x.gate;t.wantMute=x.mute;if(instant){t.cur=t.want;t.mute=x.mute}});
   ['pump','echo','drive'].forEach(k=>{if(sc[k]!=null)state[k]=sc[k]});syncMacroUI();applyMacros();
 }
 function scheduleStep(s,time){
@@ -384,7 +445,8 @@ function scheduleStep(s,time){
     hs.forEach(h=>{
       const snd=resolve(ti,h,S.count);if(h.snd==='@pick')S.count++;
       if(!snd)return;
-      playSound(snd,{pitch:h.semi||0,vol:S.vol*(h.vol==null?1:h.vol),gate:T.id==='chord'&&S.cur===1?100:100},time,T.bus,T.send?T.send:0);
+      const mel=T.id==='bass'||T.id==='chord',off=T.id==='bass'&&T.alts?(T.alts[S.alt][2]||0):0;
+      playSound(snd,{pitch:(h.semi||0)+(mel?state.key+off:0),vol:S.vol*(h.vol==null?1:h.vol),gate:T.id==='bass'?S.gate:100},time,T.bus,T.send?T.send:0);
       ev.hits.push(ti);
     });
   });
@@ -397,7 +459,8 @@ setInterval(()=>{if(!playing||!ctx)return;while(nextTime<ctx.currentTime+.12){sc
 /* ================= UI:ミキサー ================= */
 const meter=$('meter');for(let i=0;i<16;i++)meter.appendChild(document.createElement('div'));
 let sel=6,view='main';
-const chEls=TRACKS.map((T,ti)=>{
+let chEls=[];
+function buildMixer(){$('mixer').innerHTML='';chEls=TRACKS.map((T,ti)=>{
   const el=document.createElement('div');el.className='ch';el.style.setProperty('--c',T.color);
   el.innerHTML=`<div class="nm">${T.name}</div><canvas width="80" height="80"></canvas>
     <div class="fader"><div class="slot"></div><div class="fill"></div>${T.pats.map((_,k)=>`<div class="tick" data-k="${k}"></div>`).join('')}<div class="ghost hide"></div><div class="cap"></div></div>
@@ -413,7 +476,15 @@ const chEls=TRACKS.map((T,ti)=>{
   el.querySelector('.nm').onclick=()=>select(ti);el.querySelector('canvas').onclick=()=>select(ti);
   el.querySelector('.mute').onclick=()=>{const S=state.tr[ti];const m=S.wantMute!=null?S.wantMute:S.mute;S.wantMute=!m;if(!playing)S.mute=S.wantMute;renderMixer()};
   return{el,fd,yOf,cv:el.querySelector('canvas')};
-});
+});}
+buildMixer();
+function setGenre(g,keepState){
+  if(!GENRES[g])return;state.genre=g;TRACKS=GENRES[g].tracks;
+  state.tr.forEach((t,i)=>{t.cur=Math.min(t.cur,TRACKS[i].pats.length-1)});
+  if(!keepState){state.tr.forEach((t,i)=>{t.want=0;if(!playing)t.cur=0;t.alt=0});GENRES[g].init.forEach(([i,v])=>{state.tr[i].want=v;if(!playing)state.tr[i].cur=v});state.bpm=GENRES[g].bpm;applyMacros()}
+  else state.tr.forEach((t,i)=>{t.cur=Math.min(t.cur,TRACKS[i].pats.length-1);t.want=Math.min(t.want,TRACKS[i].pats.length-1);if(TRACKS[i].alts)t.alt=Math.min(t.alt,TRACKS[i].alts.length-1)});
+  buildMixer();render();save();
+}
 function setWant(ti,k){const S=state.tr[ti];if(S.want===k)return;S.want=k;if(!playing)S.cur=k;renderMixer();renderDetail();save()}
 function select(ti){sel=ti;renderMixer();renderDetail()}
 function renderMixer(){
@@ -447,6 +518,30 @@ function drawMini(){
 const curStepRel=()=>Math.max(0,curStep-curOrigin);let curOrigin=0;
 
 /* ================= 詳細パネル ================= */
+const NOTE=['A','A#','B','C','C#','D','D#','E','F','F#','G','G#'];
+let rollBar=0,rollOct=0;
+function renderRoll(){
+  const S=state.tr[4];let h='';
+  for(let r=12;r>=0;r--){const semi=r+rollOct;
+    h+=`<span>${NOTE[((semi+state.key)%12+12)%12]}${semi===0?'●':''}</span>`;
+    for(let c=0;c<16;c++){const i=rollBar*16+c,on=S.notes[i]===semi;h+=`<button data-i="${i}" data-n="${semi}" class="${on?'on':''}${r%12===0?' rt':c%4===0?' c4':''}"></button>`}}
+  $('roll').innerHTML=h;
+  $('roll').querySelectorAll('button').forEach(b=>b.onclick=async()=>{const i=+b.dataset.i,n=+b.dataset.n;
+    S.notes[i]=S.notes[i]===n?null:n;
+    if(S.notes[i]!=null){try{ensureCtx();await ctx.resume();await ready;const T=TRACKS[4];playSound(sound(T.alts[S.alt][1]),{pitch:n+state.key+(T.alts[S.alt][2]||0),vol:S.vol,gate:S.gate},ctx.currentTime+.01,'music')}catch(_){}}
+    setWant(4,TRACKS[4].pats.length-1);renderRoll();save()});
+  document.querySelectorAll('#rBar [data-b]').forEach(b=>b.classList.toggle('on',+b.dataset.b===rollBar));
+  document.querySelectorAll('#rOct [data-o]').forEach(b=>b.classList.toggle('on',+b.dataset.o===rollOct));
+  $('dGate').value=S.gate;$('dGateV').textContent=S.gate+'%';
+}
+document.querySelectorAll('#rBar [data-b]').forEach(b=>b.onclick=()=>{rollBar=+b.dataset.b;renderRoll()});
+document.querySelectorAll('#rOct [data-o]').forEach(b=>b.onclick=()=>{rollOct=+b.dataset.o;renderRoll()});
+$('rCopy').onclick=()=>{const S=state.tr[4];for(let i=0;i<16;i++)S.notes[16+i]=S.notes[i];setWant(4,TRACKS[4].pats.length-1);renderRoll();save()};
+$('rClear').onclick=()=>{state.tr[4].notes=Array(32).fill(null);renderRoll();save()};
+$('dGate').oninput=e=>{state.tr[4].gate=+e.target.value;$('dGateV').textContent=e.target.value+'%';save()};
+$('key').innerHTML=Array.from({length:12},(_,k)=>k-5).map(k=>`<option value="${k}">${NOTE[(k+12)%12]}${k===0?'(基準)':''}</option>`).join('');
+$('key').onchange=e=>{state.key=+e.target.value;render();save()};
+document.querySelectorAll('#genre [data-g]').forEach(b=>b.onclick=()=>{if(b.dataset.g!==state.genre)setGenre(b.dataset.g)});
 function renderDetail(){
   const T=TRACKS[sel],S=state.tr[sel];
   $('detail').style.setProperty('--c',T.color);
@@ -455,6 +550,7 @@ function renderDetail(){
   $('dAlts').querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{S.alt=+b.dataset.a;renderDetail();save();previewAlt()});
   const isV=T.id==='voice';
   $('dPicks').classList.toggle('hide',!isV);$('dSteps').classList.toggle('hide',!isV);
+  const isB=T.id==='bass'&&T.pats.some(p=>p[1]==='custom');$('dRoll').classList.toggle('hide',!isB);if(isB)renderRoll();
   if(isV){
     const L=voiceList();
     $('dPicks').innerHTML=L.map((s,i)=>{const k=S.picks.indexOf(i);return`<button class="chip${k>=0?' on':''}" data-p="${i}">${k>=0?`<span class="no">${k+1}</span>`:''}${s.n}</button>`}).join('');
@@ -463,7 +559,8 @@ function renderDetail(){
     $('dSteps').innerHTML=S.custom.map((on,i)=>`<button data-s="${i}" class="${on?'on':''}"></button>`).join('');
     $('dSteps').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{const i=+b.dataset.s;S.custom[i]=!S.custom[i];setWant(sel,T.pats.length-1);renderDetail();save()});
     $('dHint').textContent='音をタップで試聴＋選択(選んだ順に鳴る)。下のマスを押すと自分で置き場所を決められ、フェーダーが「自作」になります。録音は🎙から。';
-  }else $('dHint').textContent=T.alts?'上で音色を選べます。フェーダーは下ほど静か、上ほど派手なパターンです。':'フェーダーは下ほど静か、上ほど派手なパターンです。';
+  }else if(isB)$('dHint').textContent='マスをタップして音を置くと、フェーダーが「自作」になります。●がキーの基準音。⚙でキーを変えると全体の高さが変わります。';
+  else $('dHint').textContent=T.alts?'上で音色を選べます。フェーダーは下ほど静か、上ほど派手なパターンです。':'フェーダーは下ほど静か、上ほど派手なパターンです。';
   $('dVol').value=S.vol;$('dVolV').textContent=S.vol;
 }
 $('dVol').oninput=e=>{state.tr[sel].vol=+e.target.value;$('dVolV').textContent=e.target.value;save()};
@@ -498,6 +595,8 @@ function render(){
   renderMixer();renderDetail();renderRec();renderFlow();
   document.querySelectorAll('[data-q]').forEach(b=>b.classList.toggle('on',+b.dataset.q===state.quant));
   $('bpm').value=state.bpm;$('bpmV').textContent=state.bpm;
+  $('key').value=state.key;
+  document.querySelectorAll('#genre [data-g]').forEach(b=>b.classList.toggle('on',b.dataset.g===state.genre));
 }
 
 /* ================= シーンと流れ ================= */
@@ -702,7 +801,7 @@ function load(o,instant){
   if(Array.isArray(o.steps))steps=o.steps.filter(st=>scenes[st.scene]);
   if(o.loop!=null)$('chainLoop').checked=o.loop;
 }
-let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem('dance-v10',JSON.stringify(snapshot()))}catch(_){}},400)}
+let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem('dance-v11',JSON.stringify(snapshot()))}catch(_){}},400)}
 $('exportBtn').onclick=async()=>{const t=encode(snapshot());$('saveText').value=t;
   try{await navigator.clipboard.writeText(t);$('saveMsg').textContent='コピーしました。メモアプリなどに貼って保存してください。'}catch(_){$('saveMsg').textContent='下の文字を長押しして全選択→コピーしてください。'}};
 $('importBtn').onclick=()=>{try{load(decode($('saveText').value));render();$('saveMsg').textContent=playing?'読み込みました。次の区切りで切り替わります。':'読み込みました。'}catch(_){$('saveMsg').textContent='読み込めませんでした。'}};
@@ -722,12 +821,13 @@ function frame(){
   }
   [...meter.children].forEach((d,i)=>d.className=(i%4===0?'bar':'')+(i===curBeat?' cur':''));
   if(view==='main'){drawMini();
+    if(TRACKS[sel].id==='bass'&&!$('dRoll').classList.contains('hide')){const r=curStepRel()%32;$('roll').querySelectorAll('button').forEach(b=>b.classList.toggle('now',playing&&+b.dataset.i===r))}
     if(TRACKS[sel].id==='voice'){const r=curStepRel()%16;$('dSteps').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('now',playing&&i===r))}}
   if(view==='rec')drawClip();
   if(view==='flow')flowProgress();
   requestAnimationFrame(frame);
 }
-try{const o=JSON.parse(localStorage.getItem('dance-v10'));if(o)load(o,true)}catch(_){}
+try{const o=JSON.parse(localStorage.getItem('dance-v11'));if(o)load(o,true)}catch(_){}
 syncMacroUI();applyMacros();
 ready.then(()=>render());render();requestAnimationFrame(frame);
 window.addEventListener('resize',renderMixer);
